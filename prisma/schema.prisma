@@ -1,0 +1,38 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["jsonProtocol"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_URL")
+}
+
+model Player {
+  playerId         String   @id @default(cuid())
+  name             String   @unique
+  totalMatchesWon  Int      @default(0)
+  totalMatchesLost Int      @default(0)
+  totalFramesWon   Int      @default(0)
+  totalFramesLost  Int      @default(0)
+  highBreaks       Int[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Match {
+  id              String    @id @default(cuid())
+  player1Name     String
+  player2Name     String
+  active          Boolean   @default(true)
+  bestOf          Int
+  framesPlayer1   Int
+  framesPlayer2   Int
+  breaksPlayer1   Int[]
+  breaksPlayer2   Int[]
+  winner          String?
+  rawGameLog      String
+  tableNumber     Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
