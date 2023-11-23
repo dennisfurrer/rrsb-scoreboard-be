@@ -1,5 +1,6 @@
 import bodyParser from "body-parser";
 import cors from "cors";
+import { isValid, parseISO } from "date-fns";
 import dotenv from "dotenv";
 import express, { Application, Request, Response } from "express";
 import prisma from "./lib/prisma";
@@ -96,3 +97,51 @@ app.post("/matches", bodyParser.json(), async (req: Request, res: Response) => {
 
   res.send("Success");
 });
+
+app.get("/breaks/:date", async (req: Request, res: Response) => {
+  const dateString = req.params.date;
+  try {
+    // Validate and parse the date
+    const date = parseISO(dateString);
+    if (!isValid(date)) {
+      return res.status(400).json({ error: "Invalid date format" });
+    }
+
+    // Extract year, month, and day
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1; // month is 0-indexed
+    const day = date.getDate();
+
+    // Perform the database query
+    const playersBreaksList = await fetchBreaksByDate(year, month, day);
+
+    // Respond with the data
+    res.json({ data: playersBreaksList });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+async function fetchBreaksByDate(year: number, month: number, day: number) {
+  const query = `
+      SELECT 
+          p."name",
+          array_agg(DISTINCT hb ORDER BY hb DESC) FILTER (WHERE hb IS NOT NULL) AS highBreaks
+      FROM 
+          "Player" p
+      JOIN 
+          "Match" m ON p."name" = m."player1Name" OR p."name" = m."player2Name"
+      CROSS JOIN LATERAL 
+          unnest(ARRAY_CAT(m."breaksPlayer1", m."breaksPlayer2")) WITH ORDINALITY AS hb(hb, ord)
+      WHERE 
+          EXTRACT(YEAR FROM m."createdAt") = $1 AND EXTRACT(MONTH FROM m."createdAt") = $2 AND EXTRACT(DAY FROM m."createdAt") = $3
+          AND ((ord <= array_length(m."breaksPlayer1", 1) AND p."name" = m."player1Name") OR (ord > array_length(m."breaksPlayer1", 1) AND p."name" = m."player2Name"))
+      GROUP BY 
+          p."name"
+      ORDER BY 
+          p."name"
+  `;
+
+  return await prisma.$queryRawUnsafe(query, year, month, day);
+}
