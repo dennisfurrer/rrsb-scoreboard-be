@@ -151,7 +151,7 @@ async function fetchBreaksByDate(year: number, month: number, day: number) {
       GROUP BY 
           p."name"
       ORDER BY 
-          p."name"
+          highBreaks DESC;
   `;
 
   return await prisma.$queryRawUnsafe(query, year, month, day);
