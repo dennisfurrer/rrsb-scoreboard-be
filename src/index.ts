@@ -98,6 +98,17 @@ app.post("/matches", bodyParser.json(), async (req: Request, res: Response) => {
   res.send("Success");
 });
 
+app.get("/breaks/leaderboard", async (req: Request, res: Response) => {
+  try {
+    const playersBreaksList = await fetchHighestBreaksPerPlayer(25);
+
+    res.json({ data: playersBreaksList });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/breaks/:date", async (req: Request, res: Response) => {
   const dateString = req.params.date;
   try {
@@ -144,4 +155,35 @@ async function fetchBreaksByDate(year: number, month: number, day: number) {
   `;
 
   return await prisma.$queryRawUnsafe(query, year, month, day);
+}
+
+async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
+  const query = `
+  SELECT 
+      p."name", 
+      COALESCE(pb.sorted_highBreaks, '{}') AS highBreaks
+  FROM 
+      "Player" p
+  LEFT JOIN (
+      SELECT "playerId", array_agg(highBreak ORDER BY highBreak DESC) as sorted_highBreaks
+      FROM (
+      SELECT 
+          "playerId", 
+          highBreak,
+          row_number() OVER (PARTITION BY "playerId" ORDER BY highBreak DESC) as rn
+      FROM (
+          SELECT "playerId", unnest("highBreaks") as highBreak
+          FROM "Player"
+      ) AS sub
+    ) AS ranked_breaks
+    WHERE rn <= $1
+    GROUP BY "playerId"
+  ) pb ON p."playerId" = pb."playerId"
+  WHERE 
+    array_length(pb.sorted_highBreaks, 1) > 0
+  ORDER BY 
+    pb.sorted_highBreaks DESC;
+  `;
+
+  return await prisma.$queryRawUnsafe(query, breaksPerPlayer);
 }
