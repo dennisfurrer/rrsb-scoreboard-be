@@ -127,7 +127,7 @@ async function fetchBreaksByDate(year: number, month: number, day: number) {
   const query = `
       SELECT 
           p."name",
-          array_agg(DISTINCT hb ORDER BY hb DESC) FILTER (WHERE hb IS NOT NULL) AS highBreaks
+          array_agg(hb ORDER BY hb DESC) FILTER (WHERE hb IS NOT NULL) AS highBreaks
       FROM 
           "Player" p
       JOIN 
