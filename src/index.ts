@@ -15,7 +15,7 @@ const corsOptions = {
   optionSuccessStatus: 200,
 };
 
-app.use(cors(corsOptions)); // Use this after the variable declaration
+app.use(cors(corsOptions));
 const port = process.env.PORT || 8000;
 
 app.listen(port, () => {
@@ -26,77 +26,103 @@ app.get("/health", (req: Request, res: Response) => {
   res.send("RRSB Scoreboard API");
 });
 
-app.post("/matches", bodyParser.json(), async (req: Request, res: Response) => {
-  // receive raw JSON from scoreboard-fe containing game data
-  console.log(JSON.stringify(req.body, null, 2));
-  // extract game data and store in DB
-  try {
-    await prisma.match.create({
-      data: {
-        player1Name: req.body.players[0].name,
-        player2Name: req.body.players[1].name,
-        active: false,
-        bestOf: req.body.bestOf,
-        framesPlayer1: req.body.players[0].frames,
-        framesPlayer2: req.body.players[1].frames,
-        breaksPlayer1: req.body.players[0].highbreaks,
-        breaksPlayer2: req.body.players[1].highbreaks,
-        winner: req.body.players[0].winner
-          ? req.body.players[0].name
-          : req.body.players[1].winner
-          ? req.body.players[1].name
-          : null,
-        rawGameLog: JSON.stringify(req.body, null, 2),
-        tableNumber: req.body.tableNumber,
-      },
-    });
-  } catch (e) {
-    console.log("Error while storing Match record in DB: " + e);
-  }
-
-  for (let i = 0; i < req.body.players.length; i++) {
+// ##################################################################################
+app.post(
+  "/api/matches",
+  bodyParser.json(),
+  async (req: Request, res: Response) => {
     try {
-      const player = await prisma.player.findUnique({
-        where: { name: req.body.players[i].name },
+      const match = await prisma.match.create({
+        data: {
+          player1Name: req.body.players[0].name,
+          player2Name: req.body.players[1].name,
+          active: true,
+          bestOf: req.body.bestOf,
+          framesPlayer1: req.body.players[0].frames,
+          framesPlayer2: req.body.players[1].frames,
+          breaksPlayer1: req.body.players[0].highbreaks,
+          breaksPlayer2: req.body.players[1].highbreaks,
+          winner: req.body.players[0].winner
+            ? req.body.players[0].name
+            : req.body.players[1].winner
+            ? req.body.players[1].name
+            : null,
+          rawGameLog: JSON.stringify(req.body, null, 2),
+          tableNumber: req.body.tableNumber,
+        },
       });
+      res.send({ data: { matchId: match.id } });
+    } catch (e) {
+      console.log("Error while storing Match record in DB: " + e);
+    }
+    console.log(`Received POST request to /api/matches`);
+  }
+);
+app.patch(
+  "/api/matches",
+  bodyParser.json(),
+  async (req: Request, res: Response) => {
+    console.log(
+      `Received PATCH request to /api/matches for matchId: ${req.body.matchState.matchId}`
+    );
+    try {
+      const matchFound = await prisma.match.findUnique({
+        where: { id: req.body.matchState.matchId },
+      });
+      if (!matchFound) {
+        return res.status(404).json({ error: "Match not found" });
+      }
 
-      const playerHighBreaks: number[] = player?.highBreaks ?? [];
-
-      await prisma.player.upsert({
-        where: { name: req.body.players[i].name },
+      await prisma.match.upsert({
+        where: { id: req.body.matchState.matchId },
         update: {
-          totalMatchesWon:
-            player?.totalMatchesWon || 0 + (req.body.players[i].winner ? 1 : 0),
-          totalMatchesLost:
-            player?.totalMatchesLost ||
-            0 + (req.body.players[i].winner ? 0 : 1),
-          totalFramesWon:
-            player?.totalFramesWon || 0 + req.body.players[i].frames,
-          totalFramesLost:
-            player?.totalFramesLost ||
-            0 + req.body.players[i == 0 ? 1 : 0].frames,
-          highBreaks: {
-            set: [...playerHighBreaks, ...req.body.players[i].highbreaks],
+          active: req.body.type === "END_MATCH" ? false : true,
+          bestOf: req.body.matchState.bestOf,
+          framesPlayer1: req.body.matchState.players[0].frames,
+          framesPlayer2: req.body.matchState.players[1].frames,
+          breaksPlayer1: {
+            set: req.body.matchState.players[0].highbreaks || [],
           },
+          breaksPlayer2: {
+            set: req.body.matchState.players[1].highbreaks || [],
+          },
+          winner: req.body.matchState.players[0].winner
+            ? req.body.matchState.players[0].name
+            : req.body.matchState.players[1].winner
+            ? req.body.matchState.players[1].name
+            : null,
+          rawGameLog: JSON.stringify(req.body.matchState, null, 2),
         },
         create: {
-          name: req.body.players[i].name,
-          totalMatchesWon: req.body.players[i].winner ? 1 : 0,
-          totalMatchesLost: req.body.players[i].winner ? 0 : 1,
-          totalFramesWon: req.body.players[i].frames,
-          totalFramesLost: req.body.players[i == 0 ? 1 : 0].frames,
-          highBreaks: {
-            set: req.body.players[i].highbreaks,
+          player1Name: req.body.matchState.players[0].name,
+          player2Name: req.body.matchState.players[1].name,
+          active: req.body.type === "END_MATCH" ? false : true,
+          bestOf: req.body.matchState.bestOf,
+          framesPlayer1: req.body.matchState.players[0].frames,
+          framesPlayer2: req.body.matchState.players[1].frames,
+          breaksPlayer1: {
+            set: req.body.matchState.players[0].highbreaks || [],
           },
+          breaksPlayer2: {
+            set: req.body.matchState.players[1].highbreaks || [],
+          },
+          winner: req.body.matchState.players[0].winner
+            ? req.body.matchState.players[0].name
+            : req.body.matchState.players[1].winner
+            ? req.body.matchState.players[1].name
+            : null,
+          rawGameLog: JSON.stringify(req.body.matchState, null, 2),
+          tableNumber: req.body.matchState.tableNumber,
         },
       });
+      res.send({ data: { matchId: matchFound.id } });
     } catch (e) {
-      console.log("Error while storing Player record in DB: " + e);
+      console.log("Error while updating Match record in DB: " + e);
+      console.error(e);
     }
   }
-
-  res.send("Success");
-});
+);
+// ##################################################################################
 
 app.get("/breaks/leaderboard", async (req: Request, res: Response) => {
   try {
