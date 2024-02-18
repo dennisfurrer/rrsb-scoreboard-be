@@ -131,9 +131,12 @@ app.get("/api/matches/live", async (req: Request, res: Response) => {
     // for each table (assume there are 9 tables, numbered from 1-9), get the latest match where active = true
     const NUMBER_OF_TABLES = 9;
     const matches = [];
+    let oneHourAgo = new Date();
+    oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+
     for (let i = 1; i <= NUMBER_OF_TABLES; i++) {
       const match = await prisma.match.findFirst({
-        where: { active: true, tableNumber: i },
+        where: { active: true, tableNumber: i, updatedAt: { gt: oneHourAgo } },
         orderBy: { createdAt: "desc" },
       });
       if (match) {
