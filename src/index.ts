@@ -48,7 +48,9 @@ app.post(
             ? req.body.players[1].name
             : null,
           rawGameLog: JSON.stringify(req.body, null, 2),
-          tableNumber: req.body.tableNumber,
+          tableNumber: req.body.tableNumber
+            ? Number(req.body.tableNumber)
+            : null,
         },
       });
       res.send({ data: { matchId: match.id } });
@@ -112,7 +114,9 @@ app.patch(
             ? req.body.matchState.players[1].name
             : null,
           rawGameLog: JSON.stringify(req.body.matchState, null, 2),
-          tableNumber: req.body.matchState.tableNumber,
+          tableNumber: req.body.tableNumber
+            ? Number(req.body.tableNumber)
+            : null,
         },
       });
       res.send({ data: { matchId: matchFound.id } });
