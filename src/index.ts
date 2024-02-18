@@ -209,30 +209,39 @@ async function fetchBreaksByDate(year: number, month: number, day: number) {
 
 async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
   const query = `
+  WITH player_breaks AS (
+    SELECT 
+        m."player1Name" AS name, unnest(m."breaksPlayer1") AS highBreak
+    FROM 
+        "Match" m
+    WHERE 
+        m."breaksPlayer1" IS NOT NULL
+    UNION ALL
+    SELECT 
+        m."player2Name" AS name, unnest(m."breaksPlayer2") AS highBreak
+    FROM 
+        "Match" m
+    WHERE 
+        m."breaksPlayer2" IS NOT NULL
+  ), ranked_breaks AS (
+    SELECT 
+        name, 
+        highBreak,
+        row_number() OVER (PARTITION BY name ORDER BY highBreak DESC) AS rn
+    FROM 
+        player_breaks
+  )
   SELECT 
-      p."name", 
-      COALESCE(pb.sorted_highBreaks, '{}') AS highBreaks
+      name, 
+      array_agg(highBreak ORDER BY highBreak DESC) AS highBreaks
   FROM 
-      "Player" p
-  LEFT JOIN (
-      SELECT "playerId", array_agg(highBreak ORDER BY highBreak DESC) as sorted_highBreaks
-      FROM (
-      SELECT 
-          "playerId", 
-          highBreak,
-          row_number() OVER (PARTITION BY "playerId" ORDER BY highBreak DESC) as rn
-      FROM (
-          SELECT "playerId", unnest("highBreaks") as highBreak
-          FROM "Player"
-      ) AS sub
-    ) AS ranked_breaks
-    WHERE rn <= $1
-    GROUP BY "playerId"
-  ) pb ON p."playerId" = pb."playerId"
+      ranked_breaks
   WHERE 
-    array_length(pb.sorted_highBreaks, 1) > 0
+      rn <= $1
+  GROUP BY 
+      name
   ORDER BY 
-    pb.sorted_highBreaks DESC;
+      highBreaks DESC;
   `;
 
   return await prisma.$queryRawUnsafe(query, breaksPerPlayer);
