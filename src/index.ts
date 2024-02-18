@@ -68,13 +68,6 @@ app.patch(
       `Received PATCH request to /api/matches for matchId: ${req.body.matchState.matchId}`
     );
     try {
-      const matchFound = await prisma.match.findUnique({
-        where: { id: req.body.matchState.matchId },
-      });
-      if (!matchFound) {
-        return res.status(404).json({ error: "Match not found" });
-      }
-
       await prisma.match.upsert({
         where: { id: req.body.matchState.matchId },
         update: {
@@ -119,7 +112,7 @@ app.patch(
             : null,
         },
       });
-      res.send({ data: { matchId: matchFound.id } });
+      res.send({ data: { matchId: req.body.matchState.matchId } });
     } catch (e) {
       console.log("Error while updating Match record in DB: " + e);
       console.error(e);
