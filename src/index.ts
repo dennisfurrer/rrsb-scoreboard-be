@@ -122,6 +122,33 @@ app.patch(
     }
   }
 );
+app.get("/api/matches/live", async (req: Request, res: Response) => {
+  console.log(
+    `Received GET request to /api/matches/live with params: ${JSON.stringify(
+      req.body,
+      null,
+      2
+    )}`
+  );
+  try {
+    // for each table (assume there are 9 tables, numbered from 1-9), get the latest match where active = true
+    const NUMBER_OF_TABLES = 9;
+    const matches = [];
+    for (let i = 1; i <= NUMBER_OF_TABLES; i++) {
+      const match = await prisma.match.findFirst({
+        where: { active: true, tableNumber: i },
+        orderBy: { createdAt: "desc" },
+      });
+      if (match) {
+        matches.push(match);
+      }
+    }
+    res.json({ data: matches });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 // ##################################################################################
 
 app.get("/breaks/leaderboard", async (req: Request, res: Response) => {
