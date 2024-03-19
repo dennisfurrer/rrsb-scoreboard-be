@@ -221,6 +221,8 @@ async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
         m."breaksPlayer1" IS NOT NULL AND
         m."player1Name" <> 'Spieler A' AND
         m."player1Name" <> 'Spieler B' AND
+        m."player1Name" <> '1' AND
+        m."player1Name" <> '2' AND
         m."player1Name" NOT LIKE '@Neuer Spieler%'
     UNION ALL
     SELECT 
@@ -231,6 +233,8 @@ async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
         m."breaksPlayer2" IS NOT NULL AND
         m."player2Name" <> 'Spieler A' AND
         m."player2Name" <> 'Spieler B' AND
+        m."player2Name" <> '1' AND
+        m."player2Name" <> '2' AND
         m."player2Name" NOT LIKE '@Neuer Spieler%'
   ), ranked_breaks AS (
     SELECT 
