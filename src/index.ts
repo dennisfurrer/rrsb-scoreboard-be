@@ -218,14 +218,20 @@ async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
     FROM 
         "Match" m
     WHERE 
-        m."breaksPlayer1" IS NOT NULL
+        m."breaksPlayer1" IS NOT NULL AND
+        m."player1Name" <> 'Spieler A' AND
+        m."player1Name" <> 'Spieler B' AND
+        m."player1Name" NOT LIKE '@Neuer Spieler%'
     UNION ALL
     SELECT 
         m."player2Name" AS name, unnest(m."breaksPlayer2") AS highBreak
     FROM 
         "Match" m
     WHERE 
-        m."breaksPlayer2" IS NOT NULL
+        m."breaksPlayer2" IS NOT NULL AND
+        m."player2Name" <> 'Spieler A' AND
+        m."player2Name" <> 'Spieler B' AND
+        m."player2Name" NOT LIKE '@Neuer Spieler%'
   ), ranked_breaks AS (
     SELECT 
         name, 
