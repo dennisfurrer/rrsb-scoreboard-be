@@ -23,11 +23,9 @@ model Player {
 model Match {
   id              String    @id @default(cuid())
   player1Name     String
-  player1FlagUrl  String?
-  player1ImageUrl String?
+  player1NationIOC   String?
   player2Name     String
-  player2FlagUrl  String?
-  player2ImageUrl String?
+  player2NationIOC   String?
   active          Boolean   @default(true)
   bestOf          Int
   framesPlayer1   Int
