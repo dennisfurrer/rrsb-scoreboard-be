@@ -36,6 +36,8 @@ app.post(
         data: {
           player1Name: req.body.players[0].name,
           player2Name: req.body.players[1].name,
+          player1NationIOC: req.body.players[0].nationalityIOC || "",
+          player2NationIOC: req.body.players[1].nationalityIOC || "",
           active: true,
           bestOf: req.body.bestOf,
           framesPlayer1: req.body.players[0].frames,
