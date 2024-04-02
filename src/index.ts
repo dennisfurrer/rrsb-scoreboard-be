@@ -253,7 +253,7 @@ app.get("/players/:playerName", async (req: Request, res: Response) => {
           : total,
       0
     ),
-    highBreaks: breaksListPlayer[0].highbreaks || [],
+    highBreaks: breaksListPlayer[0]?.highbreaks || [],
   };
 
   res.json({ data: playerStats });
