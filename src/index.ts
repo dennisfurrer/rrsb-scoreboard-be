@@ -197,22 +197,35 @@ app.get("/breaks/:date", async (req: Request, res: Response) => {
 
 async function fetchBreaksByDate(year: number, month: number, day: number) {
   const query = `
+      WITH PlayerBreaks AS (
+          SELECT 
+              m."createdAt",
+              unnest(m."breaksPlayer1") AS hb,
+              m."player1Name" AS "playerName"
+          FROM "Match" m
+          WHERE EXTRACT(YEAR FROM m."createdAt") = $1
+            AND EXTRACT(MONTH FROM m."createdAt") = $2
+            AND EXTRACT(DAY FROM m."createdAt") = $3
+            AND m."breaksPlayer1" IS NOT NULL
+          
+          UNION ALL
+          
+          SELECT 
+              m."createdAt",
+              unnest(m."breaksPlayer2") AS hb,
+              m."player2Name" AS "playerName"
+          FROM "Match" m
+          WHERE EXTRACT(YEAR FROM m."createdAt") = $1
+            AND EXTRACT(MONTH FROM m."createdAt") = $2
+            AND EXTRACT(DAY FROM m."createdAt") = $3
+            AND m."breaksPlayer2" IS NOT NULL
+      )
       SELECT 
-          p."name",
-          array_agg(hb ORDER BY hb DESC) FILTER (WHERE hb IS NOT NULL) AS highBreaks
-      FROM 
-          "Player" p
-      JOIN 
-          "Match" m ON p."name" = m."player1Name" OR p."name" = m."player2Name"
-      CROSS JOIN LATERAL 
-          unnest(ARRAY_CAT(m."breaksPlayer1", m."breaksPlayer2")) WITH ORDINALITY AS hb(hb, ord)
-      WHERE 
-          EXTRACT(YEAR FROM m."createdAt") = $1 AND EXTRACT(MONTH FROM m."createdAt") = $2 AND EXTRACT(DAY FROM m."createdAt") = $3
-          AND ((ord <= array_length(m."breaksPlayer1", 1) AND p."name" = m."player1Name") OR (ord > array_length(m."breaksPlayer1", 1) AND p."name" = m."player2Name"))
-      GROUP BY 
-          p."name"
-      ORDER BY 
-          highBreaks DESC;
+          pb."playerName",
+          array_agg(pb.hb ORDER BY pb.hb DESC) FILTER (WHERE pb.hb IS NOT NULL) AS highBreaks
+      FROM PlayerBreaks pb
+      GROUP BY pb."playerName"
+      ORDER BY max(pb.hb) DESC;
   `;
 
   return await prisma.$queryRawUnsafe(query, year, month, day);
