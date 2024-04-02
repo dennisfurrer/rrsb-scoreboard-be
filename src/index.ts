@@ -195,6 +195,70 @@ app.get("/breaks/:date", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/players/:playerName", async (req: Request, res: Response) => {
+  const playerName = req.params.playerName;
+  // get all matches where player1Name or player2Name is equal to playerName
+  const matches = await prisma.match.findMany({
+    where: {
+      OR: [{ player1Name: playerName }, { player2Name: playerName }],
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  let nationality = null;
+
+  for (let i = 0; i < matches.length; i++) {
+    if (matches[i].player1Name === playerName) {
+      if (matches[i].player1NationIOC !== "") {
+        nationality = matches[i].player1NationIOC;
+        break;
+      }
+    } else {
+      if (matches[i].player2NationIOC !== "") {
+        nationality = matches[i].player2NationIOC;
+        break;
+      }
+    }
+  }
+
+  const breaksListPlayer = (await fetchPlayerHighBreaks(
+    playerName,
+    10
+  )) as any[];
+
+  const playerStats = {
+    name: playerName,
+    nationality,
+    matchesPlayed: matches.length,
+    matchesCompleted: matches.filter((match) => match.winner).length,
+    matchesWon: matches.filter((match) => match.winner === playerName).length,
+    matchesLost: matches.filter(
+      (match) => match.winner && match.winner !== playerName
+    ).length,
+    framesWon: matches.reduce(
+      (total, match) =>
+        match.player1Name === playerName
+          ? total + match.framesPlayer1
+          : match.player2Name === playerName
+          ? total + match.framesPlayer2
+          : total,
+      0
+    ),
+    framesLost: matches.reduce(
+      (total, match) =>
+        match.player1Name === playerName
+          ? total + match.framesPlayer2
+          : match.player2Name === playerName
+          ? total + match.framesPlayer1
+          : total,
+      0
+    ),
+    highBreaks: breaksListPlayer[0].highbreaks || [],
+  };
+
+  res.json({ data: playerStats });
+});
+
 async function fetchBreaksByDate(year: number, month: number, day: number) {
   const query = `
       WITH PlayerBreaks AS (
@@ -270,7 +334,7 @@ async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
       array_agg(highBreak ORDER BY highBreak DESC) AS highBreaks
   FROM 
       ranked_breaks
-  WHERE 
+  WHERE
       rn <= $1
   GROUP BY 
       name
@@ -279,4 +343,46 @@ async function fetchHighestBreaksPerPlayer(breaksPerPlayer = 25) {
   `;
 
   return await prisma.$queryRawUnsafe(query, breaksPerPlayer);
+}
+
+async function fetchPlayerHighBreaks(playerName: string, breaksPerPlayer = 25) {
+  const query = `
+  WITH player_breaks AS (
+    SELECT 
+        m."player1Name" AS name, unnest(m."breaksPlayer1") AS highBreak
+    FROM 
+        "Match" m
+    WHERE 
+        m."player1Name" = $1 AND
+        m."breaksPlayer1" IS NOT NULL
+    UNION ALL
+    SELECT 
+        m."player2Name", unnest(m."breaksPlayer2")
+    FROM 
+        "Match" m
+    WHERE 
+        m."player2Name" = $1 AND
+        m."breaksPlayer2" IS NOT NULL
+  ), ranked_breaks AS (
+    SELECT 
+        name, 
+        highBreak,
+        row_number() OVER (PARTITION BY name ORDER BY highBreak DESC) AS rn
+    FROM 
+        player_breaks
+  )
+  SELECT 
+      name, 
+      array_agg(highBreak ORDER BY highBreak DESC) AS highBreaks
+  FROM 
+      ranked_breaks
+  WHERE
+      rn <= $2
+  GROUP BY 
+      name
+  ORDER BY 
+      highBreaks DESC;
+  `;
+
+  return await prisma.$queryRawUnsafe(query, playerName, breaksPerPlayer);
 }
