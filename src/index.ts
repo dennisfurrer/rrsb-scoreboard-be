@@ -226,6 +226,23 @@ app.get("/players/:playerName", async (req: Request, res: Response) => {
     10
   )) as any[];
 
+  let highestBreakPerMatch: number[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    if (matches[i].player1Name === playerName) {
+      if (matches[i].breaksPlayer1.length > 0) {
+        highestBreakPerMatch.push(matches[i].breaksPlayer1[0]);
+      }
+    } else {
+      if (matches[i].breaksPlayer2.length > 0) {
+        highestBreakPerMatch.push(matches[i].breaksPlayer2[0]);
+      }
+    }
+  }
+  const averageBreakPerMatch = Math.round(
+    highestBreakPerMatch.reduce((a, b) => a + b, 0) /
+      highestBreakPerMatch.length
+  );
+
   const playerStats = {
     name: playerName,
     nationality,
@@ -254,6 +271,8 @@ app.get("/players/:playerName", async (req: Request, res: Response) => {
       0
     ),
     highBreaks: breaksListPlayer[0]?.highbreaks || [],
+    incompleteMatches: matches.filter((match) => !match.winner).length,
+    averageBreakPerMatch,
   };
 
   res.json({ data: playerStats });
