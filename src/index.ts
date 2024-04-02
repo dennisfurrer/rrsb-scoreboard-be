@@ -161,7 +161,7 @@ app.get("/api/matches/live", async (req: Request, res: Response) => {
 
 app.get("/breaks/leaderboard", async (req: Request, res: Response) => {
   try {
-    const playersBreaksList = await fetchHighestBreaksPerPlayer(25);
+    const playersBreaksList = await fetchHighestBreaksPerPlayer(50);
 
     res.json({ data: playersBreaksList });
   } catch (error) {
