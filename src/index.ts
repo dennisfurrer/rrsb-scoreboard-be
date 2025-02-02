@@ -314,6 +314,197 @@ app.get("/players/:playerName", async (req: Request, res: Response) => {
   res.json({ data: playerStats });
 });
 
+app.get("/matches/player/:playerName", async (req: Request, res: Response) => {
+  console.log(
+    `Received GET request to /matches/player/${req.params.playerName}`
+  );
+
+  const playerName = req.params.playerName;
+  const opponent = req.query.opponent as string | undefined;
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.min(
+    1000,
+    Math.max(1, parseInt(req.query.limit as string) || 50)
+  );
+  const skip = (page - 1) * limit;
+
+  try {
+    let whereClause: any = {
+      OR: [{ player1Name: playerName }, { player2Name: playerName }],
+      // Exclude empty games
+      NOT: {
+        AND: [
+          { framesPlayer1: 0 },
+          { framesPlayer2: 0 },
+          { breaksPlayer1: { equals: [] } },
+          { breaksPlayer2: { equals: [] } },
+        ],
+      },
+    };
+
+    if (opponent) {
+      whereClause = {
+        OR: [
+          {
+            AND: [{ player1Name: playerName }, { player2Name: opponent }],
+          },
+          {
+            AND: [{ player1Name: opponent }, { player2Name: playerName }],
+          },
+        ],
+        // Keep the empty games filter
+        NOT: {
+          AND: [
+            { framesPlayer1: 0 },
+            { framesPlayer2: 0 },
+            { breaksPlayer1: { equals: [] } },
+            { breaksPlayer2: { equals: [] } },
+          ],
+        },
+      };
+    }
+
+    // First get all matches and filter duplicates in memory
+    const allMatches = await prisma.match.findMany({
+      where: whereClause,
+      select: {
+        player1Name: true,
+        player2Name: true,
+        bestOf: true,
+        framesPlayer1: true,
+        framesPlayer2: true,
+        winner: true,
+        breaksPlayer1: true,
+        breaksPlayer2: true,
+        createdAt: true,
+        tableNumber: true,
+        rawGameLog: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Remove duplicates by comparing relevant fields
+    const uniqueMatches = allMatches.filter(
+      (match, index, self) =>
+        index ===
+        self.findIndex(
+          (m) =>
+            m.player1Name === match.player1Name &&
+            m.player2Name === match.player2Name &&
+            m.bestOf === match.bestOf &&
+            m.framesPlayer1 === match.framesPlayer1 &&
+            m.framesPlayer2 === match.framesPlayer2 &&
+            JSON.stringify(m.breaksPlayer1.sort()) ===
+              JSON.stringify(match.breaksPlayer1.sort()) &&
+            JSON.stringify(m.breaksPlayer2.sort()) ===
+              JSON.stringify(match.breaksPlayer2.sort())
+        )
+    );
+
+    // Apply pagination after deduplication
+    const totalMatches = uniqueMatches.length;
+    const paginatedMatches = uniqueMatches.slice(skip, skip + limit);
+
+    const formattedMatches = paginatedMatches.map((match) => ({
+      player1Name: match.player1Name,
+      player2Name: match.player2Name,
+      bestOf: match.bestOf,
+      framesPlayer1: match.framesPlayer1,
+      framesPlayer2: match.framesPlayer2,
+      winner: match.winner,
+      topBreaksPlayer1: match.breaksPlayer1.sort((a, b) => b - a).slice(0, 10),
+      topBreaksPlayer2: match.breaksPlayer2.sort((a, b) => b - a).slice(0, 10),
+      date: match.createdAt,
+      tableNumber: match.tableNumber,
+      rawGameLog: match.rawGameLog,
+    }));
+
+    // Calculate stats based on paginated data
+    const matchesWon = formattedMatches.filter(
+      (m) => m.winner === playerName
+    ).length;
+    const framesWon = formattedMatches.reduce(
+      (total, match) =>
+        total +
+        (match.player1Name === playerName
+          ? match.framesPlayer1
+          : match.framesPlayer2),
+      0
+    );
+    const framesLost = formattedMatches.reduce(
+      (total, match) =>
+        total +
+        (match.player1Name === playerName
+          ? match.framesPlayer2
+          : match.framesPlayer1),
+      0
+    );
+
+    res.json({
+      data: formattedMatches,
+      metadata: {
+        pagination: {
+          currentPage: page,
+          pageSize: limit,
+          totalPages: Math.ceil(totalMatches / limit),
+          totalMatches,
+          hasNextPage: skip + limit < totalMatches,
+          hasPreviousPage: page > 1,
+        },
+        currentPageStats: {
+          matchesDisplayed: formattedMatches.length,
+          matchesWon,
+          framesWon,
+          framesLost,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching player matches:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/players", async (req: Request, res: Response) => {
+  console.log("Received GET request to /players");
+
+  try {
+    const query = `
+      SELECT DISTINCT name
+      FROM (
+        SELECT "player1Name" as name
+        FROM "Match"
+        WHERE "player1Name" NOT IN ('Spieler A', 'Spieler B', 'Player1', 'Player2')
+        AND "player1Name" NOT LIKE '@Neuer Spieler%'
+        UNION
+        SELECT "player2Name" as name
+        FROM "Match"
+        WHERE "player2Name" NOT IN ('Spieler A', 'Spieler B', 'Player1', 'Player2')
+        AND "player2Name" NOT LIKE '@Neuer Spieler%'
+      ) as players
+      ORDER BY name ASC;
+    `;
+
+    const players = await prisma.$queryRawUnsafe<{ name: string }[]>(query);
+    const playerNames = players.map((p) => p.name);
+    const filteredPlayerNames = playerNames.filter(
+      (name) => !["1", "2"].includes(name)
+    );
+
+    res.json({
+      data: filteredPlayerNames,
+      metadata: {
+        totalPlayers: filteredPlayerNames.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching player names:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 async function fetchBreaksByDate(year: number, month: number, day: number) {
   const query = `
       WITH PlayerBreaks AS (
