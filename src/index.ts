@@ -442,44 +442,54 @@ async function fetchPlayerHighBreaks(playerName: string, breaksPerPlayer = 25) {
   return await prisma.$queryRawUnsafe(query, playerName, breaksPerPlayer);
 }
 
-async function fetchBreaksByYear(year: number) {
+async function fetchBreaksByYear(year: number, breaksPerPlayer = 25) {
   const query = `
-      WITH PlayerBreaks AS (
-          SELECT 
-              m."createdAt",
-              unnest(m."breaksPlayer1") AS hb,
-              m."player1Name" AS "playerName"
-          FROM "Match" m
-          WHERE EXTRACT(YEAR FROM m."createdAt") = $1
-            AND m."breaksPlayer1" IS NOT NULL
-            AND m."player1Name" <> 'Spieler A'
-            AND m."player1Name" <> 'Spieler B'
-            AND m."player1Name" <> '1'
-            AND m."player1Name" <> '2'
-            AND m."player1Name" NOT LIKE '@Neuer Spieler%'
-          
-          UNION ALL
-          
-          SELECT 
-              m."createdAt",
-              unnest(m."breaksPlayer2") AS hb,
-              m."player2Name" AS "playerName"
-          FROM "Match" m
-          WHERE EXTRACT(YEAR FROM m."createdAt") = $1
-            AND m."breaksPlayer2" IS NOT NULL
-            AND m."player2Name" <> 'Spieler A'
-            AND m."player2Name" <> 'Spieler B'
-            AND m."player2Name" <> '1'
-            AND m."player2Name" <> '2'
-            AND m."player2Name" NOT LIKE '@Neuer Spieler%'
-      )
-      SELECT 
-          pb."playerName",
-          array_agg(pb.hb ORDER BY pb.hb DESC) FILTER (WHERE pb.hb IS NOT NULL) AS highBreaks
-      FROM PlayerBreaks pb
-      GROUP BY pb."playerName"
-      ORDER BY max(pb.hb) DESC;
+  WITH player_breaks AS (
+    SELECT 
+        m."player1Name" AS name, unnest(m."breaksPlayer1") AS highBreak
+    FROM 
+        "Match" m
+    WHERE 
+        EXTRACT(YEAR FROM m."createdAt") = $1
+        AND m."breaksPlayer1" IS NOT NULL
+        AND m."player1Name" <> 'Spieler A'
+        AND m."player1Name" <> 'Spieler B'
+        AND m."player1Name" <> '1'
+        AND m."player1Name" <> '2'
+        AND m."player1Name" NOT LIKE '@Neuer Spieler%'
+    UNION ALL
+    SELECT 
+        m."player2Name" AS name, unnest(m."breaksPlayer2") AS highBreak
+    FROM 
+        "Match" m
+    WHERE 
+        EXTRACT(YEAR FROM m."createdAt") = $1
+        AND m."breaksPlayer2" IS NOT NULL
+        AND m."player2Name" <> 'Spieler A'
+        AND m."player2Name" <> 'Spieler B'
+        AND m."player2Name" <> '1'
+        AND m."player2Name" <> '2'
+        AND m."player2Name" NOT LIKE '@Neuer Spieler%'
+  ), ranked_breaks AS (
+    SELECT 
+        name, 
+        highBreak,
+        row_number() OVER (PARTITION BY name ORDER BY highBreak DESC) AS rn
+    FROM 
+        player_breaks
+  )
+  SELECT 
+      name, 
+      array_agg(highBreak ORDER BY highBreak DESC) AS highBreaks
+  FROM 
+      ranked_breaks
+  WHERE
+      rn <= $2
+  GROUP BY 
+      name
+  ORDER BY 
+      highBreaks DESC;
   `;
 
-  return await prisma.$queryRawUnsafe(query, year);
+  return await prisma.$queryRawUnsafe(query, year, breaksPerPlayer);
 }
