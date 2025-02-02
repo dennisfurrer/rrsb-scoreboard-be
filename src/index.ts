@@ -195,6 +195,42 @@ app.get("/breaks/:date", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/data/years", async (req: Request, res: Response) => {
+  try {
+    const query = `
+      SELECT DISTINCT
+        EXTRACT(YEAR FROM "createdAt")::integer as year
+      FROM "Match"
+      WHERE "createdAt" IS NOT NULL
+      ORDER BY year DESC;
+    `;
+
+    const years = await prisma.$queryRawUnsafe<{ year: number }[]>(query);
+    const formattedYears = years.map((y) => y.year);
+
+    res.json({ data: formattedYears });
+  } catch (error) {
+    console.error("Error fetching years:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/breaks/year/:year", async (req: Request, res: Response) => {
+  const year = parseInt(req.params.year);
+
+  if (isNaN(year)) {
+    return res.status(400).json({ error: "Invalid year format" });
+  }
+
+  try {
+    const playersBreaksList = await fetchBreaksByYear(year);
+    res.json({ data: playersBreaksList });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/players/:playerName", async (req: Request, res: Response) => {
   const playerName = req.params.playerName;
   // get all matches where player1Name or player2Name is equal to playerName
@@ -404,4 +440,46 @@ async function fetchPlayerHighBreaks(playerName: string, breaksPerPlayer = 25) {
   `;
 
   return await prisma.$queryRawUnsafe(query, playerName, breaksPerPlayer);
+}
+
+async function fetchBreaksByYear(year: number) {
+  const query = `
+      WITH PlayerBreaks AS (
+          SELECT 
+              m."createdAt",
+              unnest(m."breaksPlayer1") AS hb,
+              m."player1Name" AS "playerName"
+          FROM "Match" m
+          WHERE EXTRACT(YEAR FROM m."createdAt") = $1
+            AND m."breaksPlayer1" IS NOT NULL
+            AND m."player1Name" <> 'Spieler A'
+            AND m."player1Name" <> 'Spieler B'
+            AND m."player1Name" <> '1'
+            AND m."player1Name" <> '2'
+            AND m."player1Name" NOT LIKE '@Neuer Spieler%'
+          
+          UNION ALL
+          
+          SELECT 
+              m."createdAt",
+              unnest(m."breaksPlayer2") AS hb,
+              m."player2Name" AS "playerName"
+          FROM "Match" m
+          WHERE EXTRACT(YEAR FROM m."createdAt") = $1
+            AND m."breaksPlayer2" IS NOT NULL
+            AND m."player2Name" <> 'Spieler A'
+            AND m."player2Name" <> 'Spieler B'
+            AND m."player2Name" <> '1'
+            AND m."player2Name" <> '2'
+            AND m."player2Name" NOT LIKE '@Neuer Spieler%'
+      )
+      SELECT 
+          pb."playerName",
+          array_agg(pb.hb ORDER BY pb.hb DESC) FILTER (WHERE pb.hb IS NOT NULL) AS highBreaks
+      FROM PlayerBreaks pb
+      GROUP BY pb."playerName"
+      ORDER BY max(pb.hb) DESC;
+  `;
+
+  return await prisma.$queryRawUnsafe(query, year);
 }
